@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TodoApi;
+using static TodoItemDTO;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<TodoDb>(opt => opt.UseInMemoryDatabase("TodoList"));
@@ -21,38 +22,39 @@ app.Run();
 
 static async Task<IResult> GetAllTodos(TodoDb db)
 {
-    return TypedResults.Ok(await db.Todos.ToArrayAsync());
+    return TypedResults.Ok(ToTodoDTOList(await db.Todos.ToListAsync()));
 }
 
 static async Task<IResult> GetCompleteTodos(TodoDb db)
 {
-    return TypedResults.Ok(await db.Todos.Where(t => t.IsComplete).ToListAsync());
+    return TypedResults.Ok(ToTodoDTOList(await db.Todos.Where(t => t.IsComplete).ToListAsync()));
 }
 
 static async Task<IResult> GetTodo(int id, TodoDb db)
 {
     return await db.Todos.FindAsync(id)
         is Todo todo
-            ? TypedResults.Ok(todo)
+            ? TypedResults.Ok(new TodoItemDTO(todo))
             : TypedResults.NotFound();
 }
 
-static async Task<IResult> CreateTodo(Todo todo, TodoDb db)
+static async Task<IResult> CreateTodo(TodoItemDTO todoDTO, TodoDb db)
 {
+    var todo = ToTodo(todoDTO);
     db.Todos.Add(todo);
     await db.SaveChangesAsync();
 
-    return TypedResults.Created($"/todoitems/{todo.Id}", todo);
+    return TypedResults.Created($"/todoitems/{todoDTO.Id}", todoDTO);
 }
 
-static async Task<IResult> UpdateTodo(int id, Todo inputTodo, TodoDb db)
+static async Task<IResult> UpdateTodo(int id, TodoItemDTO todoDTO, TodoDb db)
 {
     var todo = await db.Todos.FindAsync(id);
 
     if (todo is null) return TypedResults.NotFound();
 
-    todo.Name = inputTodo.Name;
-    todo.IsComplete = inputTodo.IsComplete;
+    todo.Name = todoDTO.Name;
+    todo.IsComplete = todoDTO.IsComplete;
 
     await db.SaveChangesAsync();
 
@@ -65,18 +67,20 @@ static async Task<IResult> DeleteTodo(int id, TodoDb db)
     {
         db.Todos.Remove(todo);
         await db.SaveChangesAsync();
-        return TypedResults.Ok(todo);
+        return TypedResults.Ok($"Todo {todo.Id} deleted");
     }
-
+    
     return TypedResults.NotFound();
 }
 
-static async Task<IResult> MoreTodos (List<Todo> todos, TodoDb db)
+
+static async Task<IResult> MoreTodos (List<TodoItemDTO> todoDTOs, TodoDb db)
 {
+    var todos = ToTodoList(todoDTOs);
     db.Todos.AddRange(todos);
     await db.SaveChangesAsync();
 
-    return TypedResults.Ok(todos);
+    return TypedResults.Ok(todoDTOs);
 }
 
 static async Task<IResult> SetComplete (int id, TodoDb db)
@@ -90,10 +94,35 @@ static async Task<IResult> SetComplete (int id, TodoDb db)
             todo.IsComplete = true;
             db.Todos.Update(todo);
             await db.SaveChangesAsync();
-            return TypedResults.Ok(todo);
+            return TypedResults.Ok(new TodoItemDTO(todo));
         }
 
     }
     return TypedResults.NotFound();
 
 }
+
+static Todo ToTodo(TodoItemDTO todoItemDTO)
+{
+    if (todoItemDTO == null) return null;
+    return new Todo
+    {
+        Id = todoItemDTO.Id,
+        Name = todoItemDTO.Name,
+        IsComplete = todoItemDTO.IsComplete
+    };
+
+}
+
+static List<Todo> ToTodoList(List<TodoItemDTO> todoItemDTOs)
+{
+    if (todoItemDTOs == null) return null;
+    var todoList = new List<Todo>();
+    foreach (var todoDTO in todoItemDTOs)
+    {
+        todoList.Add(ToTodo(todoDTO));
+    }
+    return todoList;
+}
+
+
